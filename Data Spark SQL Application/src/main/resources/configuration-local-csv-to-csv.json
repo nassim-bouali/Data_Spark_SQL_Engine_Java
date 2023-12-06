@@ -1,0 +1,32 @@
+{
+  "inputs": [
+    {
+      "id": "user",
+      "type": "csv",
+      "path": "Data Spark SQL Application/src/main/resources/data/input/input_data1.csv",
+      "options": {
+        "header": "true",
+        "delimiter": ";"
+      }
+    }
+  ],
+  "transformations": [
+    {
+      "id": "allUsers",
+      "sql": "select * from user"
+    }
+  ],
+  "targets": [
+    {
+      "from_sql_query": "allUsers",
+      "output": {
+        "type": "csv",
+        "path": "Data Spark SQL Application/src/main/resources/data/output",
+        "options": {
+          "header": "true",
+          "delimiter": ";"
+        }
+      }
+    }
+  ]
+}
