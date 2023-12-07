@@ -1,0 +1,48 @@
+name: Deploy to Minikube
+
+on:
+  push:
+    branches:
+      - NB/Setup_release  # Project's main branch name
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Minikube
+        run: |
+          # Install Minikube
+          curl -Lo minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          chmod +x minikube
+          sudo install minikube /usr/local/bin/
+          
+          # Start Minikube
+          minikube start
+        env:
+          KUBECONFIG: ${{ runner.workspace }}/kubeconfig.yaml
+
+      - name: Deploy to Minikube
+        run: |
+          kubectl apply -f ./deploy/batch-sql-processing-engine-deployment.yaml
+          kubectl wait --timeout=5m --for=condition=available deployment/batch-sql-processing-engine-deployment
+          POD_NAME=$(kubectl get pods --selector=app=batch-sql-processing-engine -o jsonpath="{.items[0].metadata.name}")
+          kubectl cp "./Data Spark SQL Application/src/main/resources" $POD_NAME:/resources
+        env:
+          KUBECONFIG: ${{ runner.workspace }}/kubeconfig.yaml
+
+      - name: Verify Deployment
+        run: |
+          kubectl wait --timeout=5m --for=condition=available deployment/batch-sql-processing-engine-deployment
+          POD_NAME=$(kubectl get pods --selector=app=batch-sql-processing-engine -o jsonpath="{.items[0].metadata.name}")
+          kubectl logs -f $POD_NAME
+        env:
+          KUBECONFIG: ${{ runner.workspace }}/kubeconfig.yaml
+
+      - name: Stop Minikube
+        run: minikube stop
+
+      # Add additional steps for testing, notifications, and cleanup as needed
