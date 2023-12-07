@@ -1,0 +1,91 @@
+# minikube mount "path/to/project/Data Spark SQL Application/src/main/resources":/resources
+# kubectl apply -f path/to/project/deploy/local/batch-sql-processing-engine-deployment.yaml
+# kubectl logs -f POD_ID
+
+# ConfigMap for log4j.properties
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spark-log4j
+data:
+  log4j.properties: |-
+    log4j.rootCategory=INFO, console
+    log4j.appender.console=org.apache.log4j.ConsoleAppender
+    log4j.appender.console.target=System.err
+    log4j.appender.console.layout=org.apache.log4j.PatternLayout
+    log4j.appender.console.layout.ConversionPattern=%d{yy/MM/dd HH:mm:ss} --- thread_id=%t --- %p %c{1}: %m%n
+    log4j.logger.org.apache.spark.repl.Main=WARN
+    # Settings to quiet third party logs that are too verbose
+    log4j.logger.org.spark-project.jetty=WARN
+    log4j.logger.org.spark-project.jetty.util.component.AbstractLifeCycle=ERROR
+    log4j.logger.org.apache.spark.repl.SparkIMain$exprTyper=INFO
+    log4j.logger.org.apache.spark.repl.SparkILoop$SparkILoopInterpreter=INFO
+    log4j.logger.org.apache.parquet=ERROR
+    log4j.logger.parquet=ERROR
+    log4j.logger.org=WARN
+    log4j.logger.com.data=DEBUG
+    # SPARK-9183: Settings to avoid annoying messages when looking up nonexistent UDFs in SparkSQL with Hive support
+    log4j.logger.org.apache.hadoop.hive.metastore.RetryingHMSHandler=FATAL
+    log4j.logger.org.apache.hadoop.hive.ql.exec.FunctionRegistry=ERROR
+    # Example
+    log4j.logger.example=DEBUG
+
+---
+
+# ConfigMap for spark run
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spark-run
+data:
+  spark-run.sh: |-
+    #!/bin/sh
+    spark-submit \
+    --conf "spark.driver.extraJavaOptions=-Dlog4j.configuration=file:/log/log4j.properties" \
+    --conf "spark.executor.extraJavaOptions=-Dlog4j.configuration=file:/log/log4j.properties" \
+    --class com.data.spark.application.Application \
+    --files /log/log4j.properties \
+    /app/distribution/data-spark-sql-application.jar \
+    --inline \
+    --plan "/resources/configuration-deployment-csv-to-jdbc.json"
+
+---
+# Deployment for Spark application
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: batch-sql-processing-engine-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: batch-sql-processing-engine
+  template:
+    metadata:
+      labels:
+        app: batch-sql-processing-engine
+    spec:
+      containers:
+        - name: batch-sql-processing-engine-deployment
+          image: nassimb7/spark-sql-batch-processing-java:latest
+          command: ["/bin/sh", "/run/spark-run.sh"]
+          resources:
+            requests:
+              memory: "200Mi"
+              cpu: "0.2"
+            limits:
+              memory: "500Mi"
+              cpu: "0.5"
+          volumeMounts:
+            - name: spark-log4j
+              mountPath: /log
+            - name: spark-run
+              mountPath: /run/spark-run.sh
+              subPath: spark-run.sh
+      volumes:
+        - name: spark-log4j
+          configMap:
+            name: spark-log4j
+        - name: spark-run
+          configMap:
+            name: spark-run
